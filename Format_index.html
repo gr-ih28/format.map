@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>写真テンプレートエディター</title>
+<style>
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: #f0f0f0;
+    padding: 24px;
+  }
+
+  /* === Toolbar === */
+  .toolbar {
+    max-width: 1100px;
+    margin: 0 auto 20px;
+    background: #fff;
+    padding: 16px 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+  }
+  .toolbar h2 { margin: 0 16px 0 0; font-size: 16px; }
+  .toolbar button {
+    background: #1a73e8;
+    color: #fff;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .toolbar button.alt { background: #5f6368; }
+  .toolbar input[type="file"] { display: none; }
+
+  /* === A4 landscape page === */
+  .page {
+    width: 297mm;
+    height: 210mm;
+    max-width: 100%;
+    margin: 0 auto;
+    background: #fff;
+    position: relative;
+    box-shadow: 0 4px 24px rgba(0,0,0,.12);
+    overflow: hidden;
+  }
+
+  @page { size: A4 landscape; margin: 0; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .toolbar, .hint { display: none !important; }
+    .page { box-shadow: none; }
+  }
+
+  /* === Text block (top-left) === */
+  .text-block {
+    position: absolute;
+    top: 12mm;
+    left: 10.2mm;
+    width: 107.2mm;
+    z-index: 5;
+  }
+  .text-block .addr    { font-size: 11pt; margin-bottom: 6px; }
+  .text-block .company { font-size: 14pt; font-weight: 700; margin-bottom: 4px; }
+  .text-block .body    { font-size: 11pt; padding-left: 4px; white-space: pre-wrap; }
+  .text-block [contenteditable] { outline: none; min-height: 1em; }
+  .text-block [contenteditable]:empty:not(:focus)::before {
+    content: attr(data-placeholder);
+    color: #999;
+  }
+  [contenteditable]:hover { background: #fffbe6; }
+  [contenteditable]:focus { background: #fff3bf; }
+
+  /* === Google logo === */
+  .logo {
+    position: absolute;
+    top: 51.6mm;
+    left: 4.2mm;
+    width: 18.1mm;
+    height: auto;
+    z-index: 5;
+  }
+
+  /* === Photo slots === */
+  .slot {
+    position: absolute;
+    overflow: hidden;
+    cursor: pointer;
+    background: #fff;
+    border: 1px solid #000;
+  }
+  .slot-1::after { content: "クリックして写真を選択"; }
+  .slot-2::after { content: "クリックして地図PDFを選択"; }
+  .slot::after {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(0,0,0,.45);
+    font-size: 13px;
+    pointer-events: none;
+    transition: background .2s;
+  }
+  .slot.has-image::after { display: none; }
+  .slot.has-image { border-color: transparent; }
+  .slot:hover::after { background: rgba(0,0,0,.05); }
+
+  /* Default image rendering: contain (fit inside, keep ratio) */
+  .slot img {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  /* Cover mode: fill the slot, keep ratio, crop overflow */
+  .slot.cover img,
+  .slot-1.has-image img {
+    margin: 0;
+    max-width: none;
+    max-height: none;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .slot-1 {
+    left: 127.4mm;
+    top: 8mm;
+    width: 165mm;
+    height: 49.9mm;
+    z-index: 3;
+  }
+  .slot-2 {
+    left: 4.2mm;
+    top: 66mm;
+    width: 288.2mm;
+    height: 139.6mm;
+    z-index: 2;
+  }
+
+  .hint {
+    max-width: 1100px;
+    margin: 16px auto 0;
+    color: #666;
+    font-size: 12px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h2>📸 写真テンプレートエディター</h2>
+  <button onclick="document.getElementById('f1').click()">写真①を選択（上）</button>
+  <input type="file" id="f1" accept="image/*">
+  <button onclick="document.getElementById('fpdf').click()">📍 地図PDFから抽出（下枠）</button>
+  <input type="file" id="fpdf" accept="application/pdf">
+  <button class="alt" onclick="window.print()">印刷 / PDF保存</button>
+</div>
+
+<div class="page" id="page">
+  <div class="text-block">
+    <div class="addr"    contenteditable="true" data-placeholder="住所"></div>
+    <div class="company" contenteditable="true" data-placeholder="会社名"></div>
+    <div class="body"    contenteditable="true" data-placeholder="特記事項"></div>
+  </div>
+
+  <img class="logo" src="https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg" alt="Google">
+
+  <div class="slot slot-1" id="slot1" onclick="document.getElementById('f1').click()"></div>
+  <div class="slot slot-2" id="slot2" onclick="document.getElementById('fpdf').click()"></div>
+</div>
+
+<p class="hint">テキストはクリックで編集できます。写真エリアをクリックするとアップロードできます。</p>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+'use strict';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// Slot-2 dimensions in mm (used for aspect-ratio cropping)
+const SLOT2_W_MM = 288.2;
+const SLOT2_H_MM = 139.6;
+
+// ============================================================
+//   SLOT HELPERS
+// ============================================================
+
+function setSlotImage(slot, src, { cover = false } = {}) {
+  slot.innerHTML = '<img src="' + src + '" alt="">';
+  slot.classList.add('has-image');
+  slot.classList.toggle('cover', cover);
+}
+
+function setSlotMessage(slot, msg, color = '#666') {
+  slot.innerHTML =
+    '<div style="position:absolute;inset:0;display:flex;align-items:center;' +
+    'justify-content:center;color:' + color + ';font-size:13px;">' + msg + '</div>';
+}
+
+// Bind a file input → image preview in a slot
+function bindPhotoUpload(inputId, slotId) {
+  const input = document.getElementById(inputId);
+  const slot = document.getElementById(slotId);
+  input.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setSlotImage(slot, ev.target.result);
+    reader.readAsDataURL(file);
+  });
+}
+
+bindPhotoUpload('f1', 'slot1');
+
+// ============================================================
+//   IMAGE PROCESSING UTILITIES
+// ============================================================
+
+// Convert canvas pixels to grayscale (saturation 0).
+function toGrayscale(canvas) {
+  const ctx = canvas.getContext('2d');
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imgData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
+    data[i] = data[i+1] = data[i+2] = gray;
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return canvas;
+}
+
+// Crop canvas to a target aspect ratio, keeping a focal point centered.
+function cropToAspectKeepingPoint(canvas, targetW, targetH, focalX, focalY) {
+  const sw = canvas.width, sh = canvas.height;
+  const targetRatio = targetW / targetH;
+  const sourceRatio = sw / sh;
+
+  let cropW, cropH;
+  if (sourceRatio > targetRatio) {
+    cropH = sh;
+    cropW = sh * targetRatio;
+  } else {
+    cropW = sw;
+    cropH = sw / targetRatio;
+  }
+
+  const cropX = Math.max(0, Math.min(focalX - cropW / 2, sw - cropW));
+  const cropY = Math.max(0, Math.min(focalY - cropH / 2, sh - cropH));
+
+  const out = document.createElement('canvas');
+  out.width = Math.round(cropW);
+  out.height = Math.round(cropH);
+  out.getContext('2d').drawImage(canvas,
+    cropX, cropY, cropW, cropH,
+    0, 0, out.width, out.height);
+  return out;
+}
+
+// Detect a Google Maps red pin in the canvas.
+// Returns { x, y } center of the largest red blob, or null.
+function detectMapPin(canvas) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const data = ctx.getImageData(0, 0, w, h).data;
+
+  // Build red mask
+  const mask = new Uint8Array(w * h);
+  for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+    if (data[i] > 180 && data[i+1] < 110 && data[i+2] < 110) mask[p] = 1;
+  }
+
+  // Find largest connected component (4-connectivity flood fill)
+  const visited = new Uint8Array(w * h);
+  const stack = new Int32Array(w * h);
+  let bestSize = 0, bestCx = 0, bestCy = 0;
+
+  for (let start = 0; start < w * h; start++) {
+    if (!mask[start] || visited[start]) continue;
+
+    let sp = 0;
+    stack[sp++] = start;
+    visited[start] = 1;
+    let sumX = 0, sumY = 0, count = 0;
+
+    while (sp > 0) {
+      const cur = stack[--sp];
+      const cx = cur % w;
+      const cy = (cur - cx) / w;
+      sumX += cx; sumY += cy; count++;
+
+      const neighbors = [
+        cx > 0     ? cur - 1 : -1,
+        cx < w - 1 ? cur + 1 : -1,
+        cy > 0     ? cur - w : -1,
+        cy < h - 1 ? cur + w : -1,
+      ];
+      for (const n of neighbors) {
+        if (n >= 0 && mask[n] && !visited[n]) {
+          visited[n] = 1;
+          stack[sp++] = n;
+        }
+      }
+    }
+
+    if (count > bestSize) {
+      bestSize = count;
+      bestCx = sumX / count;
+      bestCy = sumY / count;
+    }
+  }
+
+  // Reject blobs too small to be a pin
+  if (bestSize < 200) return null;
+  return { x: bestCx, y: bestCy };
+}
+
+// ============================================================
+//   PDF MAP EXTRACTION
+// ============================================================
+
+// Extract the largest embedded image from a PDF page.
+// Uses PDF.js operator list to find image XObjects directly from PDF
+// structure — this isolates the map from logos/watermarks which are
+// stored as separate, smaller image objects.
+async function extractLargestImageFromPdfPage(page) {
+  // Render once so PDF.js loads all image objects into page.objs
+  const viewport = page.getViewport({ scale: 1 });
+  const tmp = document.createElement('canvas');
+  tmp.width = viewport.width;
+  tmp.height = viewport.height;
+  await page.render({ canvasContext: tmp.getContext('2d'), viewport }).promise;
+
+  const opList = await page.getOperatorList();
+  const OPS = pdfjsLib.OPS;
+
+  // Collect all image draw calls
+  const imageNames = [];
+  for (let i = 0; i < opList.fnArray.length; i++) {
+    const fn = opList.fnArray[i];
+    if (fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject) {
+      imageNames.push(opList.argsArray[i][0]);
+    }
+  }
+  if (imageNames.length === 0) return null;
+
+  // Pick the image with the most pixels
+  let best = null, bestArea = 0;
+  for (const name of imageNames) {
+    let img = null;
+    try { img = page.objs.get(name); }
+    catch (e) {
+      try { img = page.commonObjs.get(name); } catch (e2) { continue; }
+    }
+    if (!img || !img.width || !img.height) continue;
+    const area = img.width * img.height;
+    if (area > bestArea) { bestArea = area; best = img; }
+  }
+  if (!best) return null;
+
+  return imageObjectToCanvas(best);
+}
+
+// Convert a PDF.js image object (bitmap or raw pixel buffer) to a canvas.
+function imageObjectToCanvas(img) {
+  const w = img.width, h = img.height;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+
+  // Modern PDF.js: ImageBitmap available
+  if (img.bitmap) {
+    ctx.drawImage(img.bitmap, 0, 0);
+    return canvas;
+  }
+
+  // Legacy PDF.js: raw pixel buffer
+  if (!img.data) return null;
+  const src = img.data;
+  const bpp = src.length / (w * h);
+  const imgData = ctx.createImageData(w, h);
+
+  if (bpp === 4) {
+    imgData.data.set(src);
+  } else if (bpp === 3) {
+    for (let i = 0, j = 0; i < src.length; i += 3, j += 4) {
+      imgData.data[j]   = src[i];
+      imgData.data[j+1] = src[i+1];
+      imgData.data[j+2] = src[i+2];
+      imgData.data[j+3] = 255;
+    }
+  } else if (bpp === 1) {
+    for (let i = 0, j = 0; i < src.length; i++, j += 4) {
+      imgData.data[j] = imgData.data[j+1] = imgData.data[j+2] = src[i];
+      imgData.data[j+3] = 255;
+    }
+  } else {
+    return null;
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return canvas;
+}
+
+// ============================================================
+//   PDF UPLOAD HANDLER
+// ============================================================
+
+document.getElementById('fpdf').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const slot = document.getElementById('slot2');
+  setSlotMessage(slot, '📍 地図を抽出中...');
+
+  try {
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    const page = await pdf.getPage(1);
+
+    let mapCanvas = await extractLargestImageFromPdfPage(page);
+    if (!mapCanvas) throw new Error('地図画像が見つかりませんでした');
+
+    // Detect pin BEFORE grayscale (red color is needed)
+    const pin = detectMapPin(mapCanvas);
+    const focalX = pin ? pin.x : mapCanvas.width / 2;
+    const focalY = pin ? pin.y : mapCanvas.height / 2;
+
+    mapCanvas = cropToAspectKeepingPoint(mapCanvas, SLOT2_W_MM, SLOT2_H_MM, focalX, focalY);
+    toGrayscale(mapCanvas);
+
+    setSlotImage(slot, mapCanvas.toDataURL('image/png'), { cover: true });
+  } catch (err) {
+    console.error(err);
+    setSlotMessage(slot, 'PDF読み込みエラー: ' + err.message, '#c00');
+  }
+});
+</script>
+
+</body>
+</html>
